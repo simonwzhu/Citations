@@ -29,7 +29,8 @@ summ citation_count
 /*Is this print or Internet publication date? 
 SEEMS LIKE PRINT DATE--ALL FIRST OF MONTH*/
 gen date=date(publication_date,"YMD")
-*UPDATE THIS?
+*MU YANG SCRAPED ELSEVIER 11/21/17
+*PRANAY SCRAPED WoK BASICALLY THE SAME TIME
 local scrapedate=date("2017-11-21","YMD")
 gen print_months_ago=(`scrapedate'-date)/30.42
 gen print_months_ago_sq=print_months_ago*print_months_ago
@@ -62,10 +63,33 @@ label values post2005 beforeafter
 label var avail_yn "Data and Code Available" 
 
 *****************************************************
-save ../external/cleaned/mergedforregs.dta, replace
+save ../external/cleaned/econ_mergedforregs.dta, replace
+tab journal
+count
+append using ../external/cleaned/ps_mergedforregs.dta
+count
+tab journal
+*institution (name) only exists for Econ--PS only brought in rank
+*date vars
+*COUNT looks OK, but vars are half-half often. Fill in!
+*For graphing, create a BEFORE var (v1: 2005 for econ, 2010 for PS,
+*v2: 2005 for econ, 2012 for PS)
+
+gen discipline="econ" if journal=="aer"|journal=="qje"
+replace discipline="ps" if journal=="apsr"|journal=="ajps"
+
+gen econ=(discipline=="econ")
+
+foreach X in 10 12{
+ gen after`X'=.
+ replace after`X'=0 if post2005==0
+ replace after`X'=1 if econ==1 & post2005==1
+ replace after`X'=0 if post20`X'==0 & econ==0
+ replace after`X'=1 if post20`X'==1 & econ==0
+}
 
 ********************************************************
-*GRAPH SHARING OVER TIME
+*GRAPH SHARING OVER TIME--COMBINED
 *******************************************************
 
 bysort year aer: egen avail_j_avg=mean(avail_yn)
@@ -94,7 +118,7 @@ line aer_y_avg_dataarticle qje_y_avg_dataarticle year, title("Yearly Average Ava
 graph export ../output/econ_avail_time_dataarticle.eps, replace
 
 ****************************
-*GRAPH CITATIONS
+*GRAPH CITATIONS--COMBINED
 ****************************
 histogram citation, bgcolor(white) graphregion(color(white)) title("Density of Citations")
 graph export ../output/econ_cite_histo.eps, replace
@@ -109,43 +133,8 @@ line aer_y_citeavg qje_y_citeavg year, title("Yearly Average Citations by Journa
 	bgcolor(white) graphregion(color(white))
 graph export ../output/econ_cite_time.eps, replace
 
-***COME BACK TO THIS***
-*********************************************************
-*GRAPH TOPIC AND TYPE
-*****************************************************
-replace topic="" if topic=="skip"
-gen topic_1=(topic=="Economic Systems")
-gen topic_2=(topic=="Economic History")
-gen topic_3=(topic=="Industrial Organization")
-gen topic_4=(topic=="Public Economics")
-gen topic_5=(topic=="Law and Economics")
-gen topic_6=(topic=="International Economics")
-gen topic_7=(topic_1==0&topic_2==0&topic_3==0&topic_4==0&topic_5==0&topic_6==0)
 
-label define journal 0 "QJE" 1 "AER"
-label values aer journal
-graph bar topic_*, stack over(aer) legend(lab(1 "Systems") ///
-									lab(2 "History") ///
-									lab(3 "IO") ///
-									lab(4 "Public") ///
-									lab(5 "Law") ///
-									lab(6 "Int'l") ///
-									lab(7 "Other"))
-graph export ../output/econ_topicXjournal.eps, replace
-
-* check range of dates?
-foreach X in 2005 {
-graph bar topic_*, stack over(post`X') over(aer)  legend(lab(1 "Systems") ///
-									lab(2 "History") ///
-									lab(3 "IO") ///
-									lab(4 "Public") ///
-									lab(5 "Law") ///
-									lab(6 "Int'l") ///
-									lab(7 "Other")) ///
-	title("Article Topic by Journal Before and After `X' Policy") ///
-	bgcolor(white) graphregion(color(white))
-graph export ../output/econ_topicXjournalXpost`X'.eps, replace
-}
+*GRAPH DATA TYPE-COMBINED
 replace data_type="" if data_type=="skip"
 tab data_type, generate(data_type_)
 label var data_type_1 "Experimental"
@@ -166,19 +155,9 @@ graph export ../output/econ_typeXjournalXpost`X'.eps, replace
 
 
 *************************************
-*GRAPH AUTHOR RANKING--MU YANG TO UPDATE
+*GRAPH AUTHOR RANKING--MAYBE?
 *************************************
-/*count
-merge 1:1 doi using ../external/article_author_top_rank.dta
-drop if _merge==2 //Contains a few 2015 articles, editorials, and erratum
-*AS OF 6/21/2017 THE qje CENTENNIAL AND ~10 OTHERS AREN'T IN THIS DATASET
-count
-rename _merge merge_auth_rank
-replace top_rank=".a" if top_rank=="NA"
-destring top_rank, replace
-replace top_rank=.b if top_rank==. //.b is TRULY MISSING
-replace top_rank=125 if top_rank==.a //temp! 
-*/
+
 label var top_rank "Top US News Ranking of Author Institutions"
 histogram top_rank, title("Top US News Ranking of Articles") ///
 	bgcolor(white) graphregion(color(white)) ///
@@ -219,7 +198,6 @@ graph bar top1 top5 top20 top50 top100 unranked, stack over(post`X') over(aer)  
 	bgcolor(white) graphregion(color(white))
 graph export ../output/econ_rankXjournalXpost`X'.eps, replace
 }
-
 ***********************************************************
 *REGRESSIONS
 ***********************************************************
@@ -352,7 +330,7 @@ regress avail_yn aerXpost2005Xdata aer post2005  post2005Xdata ///
 	local F=r(F)
 	outreg2 using ../output/econ_ivreg.tex, dec(3) tex label append ctitle("First Stage") addstat(F Stat, `F') ///
 	nocons addtext(Sample, IV=Data-Only)
-	outreg2 using ../output/econ_first.tex, dec(3) keep(aerXpost2005Xdata) tex label append ctitle("First Stage") addstat(F Stat, `F') ///
+	outreg2 using ../output/econ_first.tex, dec(3) keep(aerXpost2005) tex label append ctitle("First Stage") addstat(F Stat, `F') ///
 	nocons addtext(Sample, IV=Data-Only) /*drop(print_months_ago_cu print_months_ago_sq)*/
 	
 regress avail_yn aerXpost2005 aer post2005  print_months_ago ///
